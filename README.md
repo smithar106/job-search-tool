@@ -3,11 +3,19 @@
 Automated daily job search for Ashlee R. Thomas.
 
 Every morning at 6am this script:
-1. Scrapes LinkedIn, Twitter, HackerNews, and Reddit for matching roles
-2. Scores each job 1–10 using Gemini AI (free)
-3. Writes tailored cover letters for roles that score 7+
-4. Uploads the cover letters to a Google Drive folder
-5. Emails you a summary with a link to the folder
+1. Scrapes **5 sources** for matching roles:
+   - LinkedIn (remote + hybrid, full JD via Voyager API)
+   - Twitter, HackerNews, Reddit
+   - **Greenhouse ATS** — 15 climate orgs (WRI, NRDC, EDF, C40, Ceres, South Pole, and more)
+   - **Lever ATS** — 10 climate-tech orgs (Watershed, Pachama, Ørsted, and more)
+   - **Ashby ATS** — 10 carbon removal orgs (Climeworks, Carbon Direct, Heirloom, and more)
+2. Scores each job 1–10 using Gemini 2.0 Flash (free tier)
+3. Keeps the top **30 matches** (score 6+, sorted by fit)
+4. Extracts the hiring manager name from each JD (best-effort)
+5. Writes a tailored cover letter for each match and renders it as a **PDF**
+6. Uploads all 30 PDFs to a dated Google Drive folder
+7. Creates a **Google Sheet** for the day with: title, company, hiring manager, location, score, why it fits, job URL, cover letter PDF link
+8. Emails you a summary with buttons linking to the Sheet and the Drive folder
 
 **Cost: $0/month.** Everything uses free tiers.
 
@@ -90,18 +98,19 @@ Gemini is the AI that scores jobs and writes your cover letters.
 
 ## Step 5 — Set up Google API credentials (one-time)
 
-This lets the script upload files to Drive and send emails on your behalf.
+This lets the script upload files to Drive, create Sheets, and send emails on your behalf.
 
 1. Go to https://console.cloud.google.com
 2. Click the project dropdown at the top → **New Project** → name it "job-pipeline" → Create
 3. In the left menu: **APIs & Services** → **Library**
 4. Search "Google Drive API" → click it → **Enable**
 5. Search "Gmail API" → click it → **Enable**
+6. Search "Google Sheets API" → click it → **Enable**
 6. In the left menu: **APIs & Services** → **Credentials**
-7. Click **+ Create Credentials** → **OAuth client ID**
-8. If prompted to configure consent screen: click **Configure**, choose **External**, fill in your name and email, save
-9. Back on Create Credentials: Application type = **Desktop app** → Name: "job-pipeline" → Create
-10. Click **Download JSON** → save the file as `credentials.json` in this folder
+8. Click **+ Create Credentials** → **OAuth client ID**
+9. If prompted to configure consent screen: click **Configure**, choose **External**, fill in your name and email, save
+10. Back on Create Credentials: Application type = **Desktop app** → Name: "job-pipeline" → Create
+11. Click **Download JSON** → save the file as `credentials.json` in this folder
 
 ---
 
