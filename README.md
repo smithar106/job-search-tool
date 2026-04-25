@@ -176,9 +176,9 @@ Check your inbox — you should have a morning summary email.
 
 ## Step 9 — Set it to run automatically every morning
 
-Run this once to add a cron job (runs at 6am every day):
+Run this once to add a cron job (runs at 9am every day):
 ```bash
-(crontab -l 2>/dev/null; echo "0 6 * * * cd $(pwd) && python3 job_pipeline.py >> data/pipeline.log 2>&1") | crontab -
+(crontab -l 2>/dev/null; echo "0 9 * * * cd $(pwd) && python3 job_pipeline.py >> data/pipeline.log 2>&1") | crontab -
 ```
 
 To verify it was added:

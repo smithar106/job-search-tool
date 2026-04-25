@@ -103,9 +103,9 @@ fi
 # ─── 8. cron setup ───────────────────────────────────────────────────────────
 echo ""
 PIPELINE_PATH="$(pwd)/job_pipeline.py"
-CRON_LINE="0 6 * * * cd $(pwd) && python3 $PIPELINE_PATH >> data/pipeline.log 2>&1"
+CRON_LINE="0 9 * * * cd $(pwd) && python3 $PIPELINE_PATH >> data/pipeline.log 2>&1"
 
-echo "To run the pipeline every morning at 6am, add this cron job:"
+echo "To run the pipeline every morning at 9am, add this cron job:"
 echo ""
 echo "   $CRON_LINE"
 echo ""
