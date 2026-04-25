@@ -84,6 +84,10 @@ SEARCHES = [
     ("linkedin", "search", "sustainability VP supply chain",       ["--remote", "hybrid", "--details", "--limit", "20", "--date-posted", "week"]),
     ("linkedin", "search", "carbon accounting ESG director",       ["--remote", "hybrid", "--details", "--limit", "20", "--date-posted", "week"]),
     ("linkedin", "search", "climate policy program director",      ["--remote", "hybrid", "--details", "--limit", "20", "--date-posted", "week"]),
+    # Renewable energy / packaging / supply chain — hybrid
+    ("linkedin", "search", "renewable energy sustainability director",    ["--remote", "hybrid", "--details", "--limit", "20", "--date-posted", "week"]),
+    ("linkedin", "search", "sustainable supply chain ESG manager",        ["--remote", "hybrid", "--details", "--limit", "20", "--date-posted", "week"]),
+    ("linkedin", "search", "sustainable packaging circular economy lead", ["--remote", "hybrid", "--details", "--limit", "20", "--date-posted", "week"]),
     # Twitter
     ("twitter", "search", "hiring climate sustainability director", []),
     ("twitter", "search", "hiring ESG Scope 3 remote",             []),
@@ -101,6 +105,7 @@ SEARCHES = [
 # slug = the company's Greenhouse board slug (found in their jobs page URL)
 
 GREENHOUSE_ORGS = [
+    # Climate / ESG NGOs
     ("World Resources Institute",       "wri"),
     ("Rocky Mountain Institute",        "rockymountaininstitute"),
     ("NRDC",                            "nrdc"),
@@ -113,9 +118,26 @@ GREENHOUSE_ORGS = [
     ("BSR",                             "bsr"),
     ("South Pole",                      "southpole"),
     ("Clean Air Task Force",            "catf"),
+    # Tech with large sustainability teams
     ("Salesforce",                      "salesforce"),
     ("Stripe",                          "stripe"),
     ("Airbnb",                          "airbnb"),
+    # Renewable energy
+    ("Sunrun",                          "sunrun"),
+    ("Sunnova Energy",                  "sunnova"),
+    ("Nextracker",                      "nextracker"),
+    ("Pattern Energy",                  "patternenergy"),
+    ("Intersect Power",                 "intersectpower"),
+    ("Invenergy",                       "invenergy"),
+    # Sustainable packaging
+    ("Novamont",                        "novamont"),
+    ("Footprint",                       "footprinttech"),
+    ("Sealed Air",                      "sealedair"),
+    ("Smurfit Westrock",                "smurfitkappa"),
+    # Sustainable supply chain / logistics
+    ("Flexport",                        "flexport"),
+    ("Sourcemap",                       "sourcemap"),
+    ("Resilinc",                        "resilinc"),
 ]
 
 # ─── Lever ATS orgs ───────────────────────────────────────────────────────────
@@ -123,22 +145,32 @@ GREENHOUSE_ORGS = [
 # No auth required.
 
 LEVER_ORGS = [
-    ("Stripe Climate",              "stripe"),
-    ("Patagonia",                   "patagonia"),
-    ("Lyft",                        "lyft"),
-    ("Allbirds",                    "allbirds"),
-    ("Impossible Foods",            "impossiblefoods"),
+    # Climate tech / carbon
     ("Watershed",                   "watershed"),
     ("Pachama",                     "pachama"),
     ("Rubicon Carbon",              "rubiconcarbonteam"),
     ("CarbonCure Technologies",     "carboncure"),
     ("Ørsted",                      "orsted"),
+    # Consumer sustainability
+    ("Patagonia",                   "patagonia"),
+    ("Allbirds",                    "allbirds"),
+    ("Impossible Foods",            "impossiblefoods"),
+    # Renewable energy
+    ("Sunlight Financial",          "sunlightfinancial"),
+    ("Plus Power",                  "pluspower"),
+    ("Arcadia",                     "arcadia"),
+    ("Ampere Energy",               "ampere"),
+    # Sustainable supply chain
+    ("Sourcery",                    "sourcery"),
+    ("EcoVadis",                    "ecovadis"),
+    ("Ulula",                       "ulula"),
 ]
 
 # ─── Ashby ATS orgs ───────────────────────────────────────────────────────────
 # Public API: https://jobs.ashbyhq.com/api/non-user-facing/job-board/for-organization?organizationHostedJobsPageName={slug}
 
 ASHBY_ORGS = [
+    # Carbon removal
     ("Climeworks",                  "climeworks"),
     ("Carbon Direct",               "carbondirect"),
     ("Heirloom Carbon",             "heirloomcarbon"),
@@ -149,6 +181,16 @@ ASHBY_ORGS = [
     ("Perennial",                   "perennial"),
     ("Remora",                      "remora"),
     ("Terawatt Infrastructure",     "terawatt"),
+    # Renewable energy
+    ("Omnidian",                    "omnidian"),
+    ("Anza Renewables",             "anzarenewables"),
+    ("Aeva",                        "aeva"),
+    # Sustainable packaging / circular economy
+    ("Noissue",                     "noissue"),
+    ("Roba Metals",                 "robametals"),
+    # Sustainable supply chain
+    ("Canopy",                      "canopylabs"),
+    ("Pledge",                      "pledge"),
 ]
 
 # Keywords to filter Greenhouse/Lever/Ashby results to relevant roles
@@ -156,6 +198,15 @@ GREENHOUSE_KEYWORDS = {
     "sustainability", "climate", "esg", "carbon", "scope 3", "decarbonization",
     "net zero", "emissions", "supply chain", "environment", "energy", "sbti",
     "procurement", "circular", "impact", "regenerative", "green",
+    # Renewable energy
+    "renewable", "solar", "wind", "clean energy", "grid", "storage", "battery",
+    "clean power", "energy transition", "electrification",
+    # Sustainable packaging / circular
+    "packaging", "circular economy", "biodegradable", "compostable", "recycled",
+    "waste reduction", "end of life", "material", "lifecycle",
+    # Sustainable supply chain
+    "supplier", "sourcing", "traceability", "responsible sourcing",
+    "ethical supply", "vendor", "raw material",
 }
 
 # ─── Logging ──────────────────────────────────────────────────────────────────
@@ -490,6 +541,69 @@ Write only the letter body. No subject line, no date, no address block."""
         log.warning("Cover letter failed for %s: %s", job['title'], e)
         return f"[Cover letter generation failed: {e}]"
 
+# ─── LinkedIn outreach blurbs ─────────────────────────────────────────────────
+
+def write_linkedin_outreach(job: dict, resume: str, client: genai.Client) -> dict:
+    """
+    Generate two LinkedIn blurbs per job:
+      - 'message'  : ~150-word InMail / open-message for when free messaging is enabled
+      - 'note'     : ≤120-char connection request note for "Send with note" button
+    Returns {"message": "...", "note": "..."}
+    """
+    hm   = job.get("hiring_manager", "—")
+    hm_line = f"Hiring manager: {hm}" if hm != "—" else "Hiring manager: unknown"
+
+    prompt = f"""Write two LinkedIn outreach messages for Ashlee R. Thomas applying to:
+
+Role: {job['title']} at {job['company']}
+{hm_line}
+Why she fits: {job.get('why', '')}
+
+MESSAGE (free InMail / open message — hiring manager has messaging enabled):
+- 100-150 words maximum
+- Address by first name if hiring manager name is known, otherwise "Hi" + no name
+- Open with one specific observation about {job['company']}'s climate/ESG work
+- One sentence connecting her Oxfam Scope 3 or USAID background to this role
+- Mention she has applied and a tailored cover letter is attached
+- End with a low-friction ask: "Happy to connect if you have questions."
+- No emojis, no filler phrases, no "I hope this message finds you well"
+
+CONNECTION NOTE (for the "Connect / Add a note" button — hard limit 120 characters including spaces):
+- Must be UNDER 120 characters — count carefully
+- First name if known, otherwise no name
+- One punchy reason she's a fit
+- No hashtags, no emojis
+
+Return ONLY valid JSON, no markdown:
+{{"message": "...", "note": "..."}}"""
+
+    try:
+        r    = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
+        text = r.text.strip().strip("```json").strip("```").strip()
+        data = json.loads(text)
+        # Enforce the 120-char hard limit on the note
+        note = str(data.get("note", "")).strip()
+        if len(note) > 120:
+            note = note[:117].rsplit(" ", 1)[0] + "..."
+        return {
+            "message": str(data.get("message", "")).strip(),
+            "note":    note,
+        }
+    except Exception as e:
+        log.warning("LinkedIn outreach failed for %s: %s", job["title"], e)
+        hm_first = hm.split()[0] if hm != "—" else ""
+        greeting  = f"Hi {hm_first}," if hm_first else "Hi,"
+        fallback_msg = (
+            f"{greeting} I've applied for the {job['title']} role at {job['company']}. "
+            f"My Oxfam Scope 3 and USAID background align closely with what you're building. "
+            f"Happy to connect if you have questions."
+        )
+        fallback_note = f"Applied for {job['title']} — Scope 3 + USAID background, CC-P certified."
+        return {
+            "message": fallback_msg,
+            "note":    fallback_note[:120],
+        }
+
 # ─── PDF rendering ────────────────────────────────────────────────────────────
 
 def render_pdf(job: dict, letter_text: str, today: str) -> bytes:
@@ -598,7 +712,7 @@ def upload_pdf(drive_svc, filename: str, pdf_bytes: bytes, folder_id: str) -> st
 SHEET_HEADERS = [
     "#", "Date", "Title", "Company", "Hiring Manager",
     "Location", "Score", "Why it fits", "What's missing",
-    "Job URL", "Cover Letter PDF",
+    "Job URL", "Cover Letter PDF", "LinkedIn Message", "Connection Note (≤120 chars)",
 ]
 
 def create_daily_sheet(sheets_svc, drive_svc, matches: list[dict], today: str) -> str:
@@ -641,6 +755,8 @@ def create_daily_sheet(sheets_svc, drive_svc, matches: list[dict], today: str) -
             m.get("missing", ""),
             m.get("url", ""),
             m.get("cover_letter_url", ""),
+            m.get("linkedin_message", ""),
+            m.get("linkedin_note", ""),
         ])
 
     sheets_svc.spreadsheets().values().update(
@@ -829,17 +945,21 @@ def main():
     folder_id, folder_url = create_drive_folder(drive_svc, today)
     log.info("Drive folder: %s", folder_url)
 
-    # 6. Write cover letters, render PDFs, upload
-    log.info("Writing %d cover letters...", len(qualified))
+    # 6. Write cover letters, LinkedIn blurbs, render PDFs, upload
+    log.info("Writing %d cover letters + LinkedIn blurbs...", len(qualified))
     for i, job in enumerate(qualified):
         log.info("  %d/%d  %s @ %s", i + 1, len(qualified), job["title"], job["company"])
+
         letter_text = write_cover_letter(job, {"why": job["why"]}, resume, client)
         pdf_bytes   = render_pdf(job, letter_text, today)
 
         safe = re.sub(r"[^\w\s\-]", "", f"{job['company']} - {job['title']}")[:80].strip()
-        filename = f"{safe}.pdf"
+        job["cover_letter_url"] = upload_pdf(drive_svc, f"{safe}.pdf", pdf_bytes, folder_id)
 
-        job["cover_letter_url"] = upload_pdf(drive_svc, filename, pdf_bytes, folder_id)
+        outreach = write_linkedin_outreach(job, resume, client)
+        job["linkedin_message"] = outreach["message"]
+        job["linkedin_note"]    = outreach["note"]
+
         time.sleep(0.5)
 
     # 7. Create Google Sheet

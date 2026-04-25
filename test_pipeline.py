@@ -320,6 +320,62 @@ class TestCoverLetter(unittest.TestCase):
         self.assertIn("failed", result.lower())
 
 
+# ─── LinkedIn outreach blurbs ─────────────────────────────────────────────────
+
+class TestLinkedInOutreach(unittest.TestCase):
+
+    JOB_WITH_HM = {**SAMPLE_JOB, "hiring_manager": "Sarah Kim", "why": "Strong Scope 3 match."}
+    JOB_NO_HM   = {**SAMPLE_JOB, "hiring_manager": "—",         "why": "Strong Scope 3 match."}
+
+    def _client(self, payload: dict):
+        client = MagicMock()
+        client.models.generate_content.return_value = MagicMock(
+            text=json.dumps(payload))
+        return client
+
+    def test_returns_message_and_note(self):
+        client = self._client({"message": "Hi Sarah, ...", "note": "Applied for Head of Sustainability — Scope 3 expert."})
+        result = p.write_linkedin_outreach(self.JOB_WITH_HM, "resume", client)
+        self.assertIn("message", result)
+        self.assertIn("note", result)
+        self.assertIsInstance(result["message"], str)
+        self.assertIsInstance(result["note"], str)
+
+    def test_note_hard_limit_120_chars(self):
+        long_note = "A" * 200
+        client = self._client({"message": "Hi Sarah, ...", "note": long_note})
+        result = p.write_linkedin_outreach(self.JOB_WITH_HM, "resume", client)
+        self.assertLessEqual(len(result["note"]), 120,
+                             f"Note is {len(result['note'])} chars, must be ≤120")
+
+    def test_note_already_under_limit_unchanged(self):
+        short_note = "Scope 3 specialist, CC-P certified. Would love to connect."
+        client = self._client({"message": "Hi,", "note": short_note})
+        result = p.write_linkedin_outreach(self.JOB_WITH_HM, "resume", client)
+        self.assertEqual(result["note"], short_note)
+
+    def test_fallback_on_api_error(self):
+        client = MagicMock()
+        client.models.generate_content.side_effect = Exception("quota")
+        result = p.write_linkedin_outreach(self.JOB_WITH_HM, "resume", client)
+        self.assertIn("message", result)
+        self.assertIn("note", result)
+        self.assertLessEqual(len(result["note"]), 120)
+
+    def test_fallback_note_under_limit(self):
+        client = MagicMock()
+        client.models.generate_content.side_effect = Exception("quota")
+        result = p.write_linkedin_outreach(self.JOB_NO_HM, "resume", client)
+        self.assertLessEqual(len(result["note"]), 120)
+
+    def test_handles_malformed_json(self):
+        client = MagicMock()
+        client.models.generate_content.return_value = MagicMock(text="not json")
+        result = p.write_linkedin_outreach(self.JOB_WITH_HM, "resume", client)
+        self.assertIn("message", result)
+        self.assertLessEqual(len(result["note"]), 120)
+
+
 # ─── PDF rendering ────────────────────────────────────────────────────────────
 
 class TestPDFRendering(unittest.TestCase):
@@ -426,6 +482,10 @@ class TestConfig(unittest.TestCase):
                              f"SEARCHES entry {entry} should be a 4-tuple")
             adapter, subcommand, query, flags = entry
             self.assertIsInstance(flags, list)
+
+    def test_sheet_headers_include_linkedin_columns(self):
+        self.assertIn("LinkedIn Message",              p.SHEET_HEADERS)
+        self.assertIn("Connection Note (≤120 chars)", p.SHEET_HEADERS)
 
 
 if __name__ == "__main__":
