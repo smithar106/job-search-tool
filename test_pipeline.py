@@ -68,20 +68,20 @@ class TestScraping(unittest.TestCase):
             stdout=json.dumps([SAMPLE_JOB]),
             stderr="",
         )
-        results = p.run_opencli("linkedin", "jobs", "sustainability")
+        results = p.run_opencli("linkedin", "search", "sustainability", ["--remote", "remote"])
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["url"], SAMPLE_JOB["url"])
 
     @patch("job_pipeline.subprocess.run")
     def test_run_opencli_handles_empty(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stdout="[]", stderr="")
-        results = p.run_opencli("linkedin", "jobs", "sustainability")
+        results = p.run_opencli("linkedin", "search", "sustainability", [])
         self.assertEqual(results, [])
 
     @patch("job_pipeline.subprocess.run")
     def test_run_opencli_handles_nonzero_exit(self, mock_run):
         mock_run.return_value = MagicMock(returncode=69, stdout="", stderr="Browser not connected")
-        results = p.run_opencli("linkedin", "jobs", "sustainability")
+        results = p.run_opencli("linkedin", "search", "sustainability", [])
         self.assertEqual(results, [])
 
     @patch("job_pipeline.subprocess.run")

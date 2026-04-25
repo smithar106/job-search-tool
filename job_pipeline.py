@@ -55,25 +55,31 @@ DRIVE_SCOPES = [
 ]
 
 # ─── Search queries ─────────────────────────────────────────────────────────────
-# Each entry: (opencli_adapter, subcommand, query_string)
+# Each entry: (adapter, subcommand, query, extra_flags_list)
+# LinkedIn uses the built-in `opencli linkedin search` adapter:
+#   - positional arg is the keyword query
+#   - --details fetches full JD text (slower but needed for scoring)
+#   - --remote remote filters to remote-only roles
+#   - --date-posted week avoids stale listings
+#   - --limit 20 caps results per query
 SEARCHES = [
-    # LinkedIn (requires opencli linkedin adapter — see README)
-    ("linkedin", "jobs", "Head of Sustainability Scope 3 remote"),
-    ("linkedin", "jobs", "Climate Finance Director remote"),
-    ("linkedin", "jobs", "ESG Strategy Director supply chain"),
-    ("linkedin", "jobs", "Decarbonization Program Manager remote"),
-    ("linkedin", "jobs", "SBTi supplier engagement lead"),
-    ("linkedin", "jobs", "Supply chain sustainability VP"),
+    # LinkedIn — built-in adapter, uses Voyager API via logged-in Chrome
+    ("linkedin", "search", "Head of Sustainability Scope 3",         ["--remote", "remote", "--details", "--limit", "20", "--date-posted", "week"]),
+    ("linkedin", "search", "Climate Finance Director",               ["--remote", "remote", "--details", "--limit", "20", "--date-posted", "week"]),
+    ("linkedin", "search", "ESG Strategy Director supply chain",     ["--remote", "remote", "--details", "--limit", "20", "--date-posted", "week"]),
+    ("linkedin", "search", "Decarbonization Program Manager",        ["--remote", "remote", "--details", "--limit", "20", "--date-posted", "week"]),
+    ("linkedin", "search", "SBTi supplier engagement",              ["--remote", "remote", "--details", "--limit", "20", "--date-posted", "week"]),
+    ("linkedin", "search", "sustainability VP supply chain",         ["--remote", "remote", "--details", "--limit", "20", "--date-posted", "week"]),
     # Twitter
-    ("twitter", "search", "hiring climate sustainability director"),
-    ("twitter", "search", "hiring ESG Scope 3 remote"),
-    ("twitter", "search", "sustainability VP opening hiring"),
+    ("twitter", "search", "hiring climate sustainability director",  []),
+    ("twitter", "search", "hiring ESG Scope 3 remote",              []),
+    ("twitter", "search", "sustainability VP opening hiring",        []),
     # HackerNews
-    ("hackernews", "search", "sustainability ESG climate hiring"),
-    ("hackernews", "search", "Scope 3 decarbonization"),
+    ("hackernews", "search", "sustainability ESG climate hiring",    []),
+    ("hackernews", "search", "Scope 3 decarbonization",             []),
     # Reddit
-    ("reddit", "search", "climate sustainability hiring remote --subreddit r/ClimateJobs"),
-    ("reddit", "search", "ESG job opening --subreddit r/sustainability"),
+    ("reddit", "search", "climate sustainability hiring",           ["--subreddit", "r/ClimateJobs"]),
+    ("reddit", "search", "ESG job opening",                         ["--subreddit", "r/sustainability"]),
 ]
 
 # ─── Logging ────────────────────────────────────────────────────────────────────
@@ -118,14 +124,14 @@ def mark_seen(jobs: list):
 
 # ─── Scraping ────────────────────────────────────────────────────────────────────
 
-def run_opencli(adapter: str, subcommand: str, query: str) -> list[dict]:
+def run_opencli(adapter: str, subcommand: str, query: str, extra_flags: list[str] = None) -> list[dict]:
     """Run an opencli command and return parsed JSON results."""
-    # Split query in case it has flags like --subreddit
-    query_parts = query.split()
-    cmd = ["opencli", adapter, subcommand] + query_parts + ["-f", "json"]
+    cmd = ["opencli", adapter, subcommand, query] + (extra_flags or []) + ["-f", "json"]
     log.info("Running: %s", " ".join(cmd))
+    # LinkedIn --details can take a while per job listing
+    timeout = 300 if adapter == "linkedin" else 60
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         if result.returncode != 0:
             log.warning("opencli returned %d: %s", result.returncode, result.stderr[:200])
             return []
@@ -144,22 +150,28 @@ def run_opencli(adapter: str, subcommand: str, query: str) -> list[dict]:
 def scrape_jobs(seen: set) -> list[dict]:
     """Scrape all sources, deduplicate against seen set."""
     all_jobs = []
-    for adapter, subcommand, query in SEARCHES:
-        jobs = run_opencli(adapter, subcommand, query)
+    for adapter, subcommand, query, extra_flags in SEARCHES:
+        jobs = run_opencli(adapter, subcommand, query, extra_flags)
         for job in jobs:
             url = job.get("url", "")
             if url and url not in seen:
-                # Normalize fields — different adapters use different key names
+                # Normalize fields across adapters:
+                # LinkedIn returns: title, company, location, listed, salary, url, description, apply_url
+                # Twitter returns: text, url, author
+                # HackerNews returns: title, url, points, comments
+                # Reddit returns: title, url, score, subreddit
                 all_jobs.append({
                     "title":       job.get("title") or job.get("name", "Unknown Role"),
-                    "company":     job.get("company") or job.get("org") or job.get("source", "Unknown"),
+                    "company":     job.get("company") or job.get("org") or job.get("author") or job.get("source", "Unknown"),
                     "url":         url,
                     "description": job.get("description") or job.get("body") or job.get("text", ""),
                     "location":    job.get("location", ""),
+                    "salary":      job.get("salary", ""),
+                    "listed":      job.get("listed", ""),
                     "source":      adapter,
                 })
                 seen.add(url)
-        time.sleep(1)  # be gentle with the browser extension
+        time.sleep(2)  # be gentle with the browser extension
     log.info("Found %d new jobs across all sources", len(all_jobs))
     return all_jobs
 

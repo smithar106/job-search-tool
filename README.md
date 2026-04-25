@@ -179,15 +179,18 @@ crontab -l
 
 ---
 
-## Step 10 — Build the LinkedIn adapter (highest value, ask Arthur)
+## Step 10 — Log in to LinkedIn in Chrome
 
-LinkedIn has the most climate/ESG roles but requires a custom adapter.
-Arthur's `~/linkedin-bot` has the Playwright code already — it just needs to be
-packaged as an OpenCLI adapter using the `opencli-adapter-author` skill.
+LinkedIn is already supported — no extra setup needed. The pipeline uses OpenCLI's
+built-in `linkedin search` adapter, which calls LinkedIn's internal job API via
+your logged-in Chrome session.
 
-Once built, the pipeline automatically picks it up via the `linkedin` searches in `SEARCHES`.
+All you need to do:
+1. Open Chrome
+2. Go to https://www.linkedin.com and make sure you're logged in
+3. That's it — the pipeline will use that session automatically
 
-Until then, the pipeline runs on Twitter, HackerNews, and Reddit — still useful.
+If LinkedIn ever logs you out, just log back in through Chrome and the pipeline works again.
 
 ---
 
