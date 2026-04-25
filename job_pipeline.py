@@ -467,7 +467,8 @@ def init_gemini() -> genai.Client:
     return genai.Client(api_key=GEMINI_API_KEY)
 
 def score_job(job: dict, resume: str, client: genai.Client) -> dict:
-    prompt = f"""You are evaluating job fit for Ashlee R. Thomas, a senior climate and ESG professional.
+    prompt = f"""You are a senior recruiter evaluating whether Ashlee R. Thomas should apply \
+to this role. Be rigorous — a bad application wastes her time and hurts her response rate.
 
 CANDIDATE PROFILE:
 {resume}
@@ -476,20 +477,77 @@ JOB:
 Title: {job['title']}
 Company: {job['company']}
 Location: {job.get('location', 'unknown')}
-Description: {job['description'][:3000] if job['description'] else 'No description available'}
+Description: {job['description'][:3500] if job['description'] else 'No description available'}
 
-Score this job 1-10 for candidate fit. Consider: Scope 3/SBTi experience match, \
-seniority alignment, sector fit (climate/ESG/sustainability), language requirements.
+SCORING RUBRIC — evaluate each dimension:
+
+1. ROLE TYPE (0 or disqualify)
+   - Must be a sustainability, climate, ESG, supply chain, or energy role at its core
+   - Disqualify if primarily: fundraising, comms/PR, software engineering, HR, finance/accounting
+   - Score 0 if disqualified
+
+2. SENIORITY MATCH (0-2 pts) — sets overqualified flag, never disqualifies alone
+   - Ashlee has 12 years experience, director/senior manager/VP/advisor/lead level
+   - 2 = director/VP/head/senior manager/principal/advisor (perfect fit) → overqualified: false
+   - 1 = manager/specialist (she brings more than required) → overqualified: true, cap total score at 7
+   - 0.5 = coordinator/associate/analyst → overqualified: true, cap total score at 6
+   - DO NOT disqualify based on seniority — overqualified roles are intentionally included
+
+3. SUBJECT MATTER MATCH (0-3 pts)
+   - 3 = Scope 3, SBTi, supply chain decarbonization, climate finance, ESG reporting
+   - 2 = broader sustainability strategy, carbon accounting, net zero, circular economy
+   - 1 = adjacent (renewable energy, sustainable packaging, responsible sourcing)
+   - 0 = no meaningful overlap
+
+4. SECTOR/EMPLOYER FIT (0-2 pts)
+   - 2 = NGO, development org, climate consultancy, ESG data platform, mission-driven company
+   - 1 = large corporate sustainability team (tech, consumer, finance)
+   - 0 = sector mismatch
+
+5. CREDENTIAL MATCH (0-2 pts)
+   - Does the JD mention or benefit from: CC-P certification, multilingual (Spanish/French),
+     GIS/data viz, USAID/government, UN/multilateral experience, global supply chains?
+   - 2 = strong credential alignment
+   - 1 = some alignment
+   - 0 = none
+
+6. ATS KEYWORD OVERLAP
+   - List the exact phrases from the JD that appear in or closely match Ashlee's resume
+   - These will be injected directly into the cover letter for ATS screening
+
+HARD DISQUALIFIERS (score 0 if any apply):
+- Requires engineering/technical degree (not policy/international relations)
+- Role is primarily fundraising, development, comms, marketing, or software
+- Requires active security clearance
+- Requires relocation to a non-negotiable single city (not hybrid/remote)
+NOTE: "3-5 years experience" or "entry-level" is NOT a hard disqualifier — set overqualified: true and cap score per seniority rules above
 
 Return ONLY valid JSON, no markdown:
-{{"score": 8, "why": "Strong match — 2 sentences max", "missing": "One gap or none"}}"""
+{{
+  "score": 8,
+  "why": "3-4 sentences: what specifically makes her a strong fit, referencing her actual experience",
+  "missing": "The one real gap, or 'none'",
+  "strongest_credential": "The single most impressive thing from her background that matches this JD",
+  "ats_keywords": ["exact phrase from JD", "another phrase", "up to 8 terms"],
+  "company_fact": "One specific, verifiable fact about this company's sustainability/ESG work mentioned IN the JD itself — do NOT invent or guess",
+  "overqualified": false
+}}"""
     try:
-        r = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
+        r    = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
         text = r.text.strip().strip("```json").strip("```").strip()
-        return json.loads(text)
+        data = json.loads(text)
+        data.setdefault("why",                  "")
+        data.setdefault("missing",              "none")
+        data.setdefault("strongest_credential", "")
+        data.setdefault("ats_keywords",         [])
+        data.setdefault("company_fact",         "")
+        data.setdefault("overqualified",        False)
+        return data
     except Exception as e:
-        log.warning("Scoring failed for %s: %s", job['title'], e)
-        return {"score": 0, "why": "scoring error", "missing": "n/a"}
+        log.warning("Scoring failed for %s: %s", job["title"], e)
+        return {"score": 0, "why": "scoring error", "missing": "n/a",
+                "strongest_credential": "", "ats_keywords": [], "company_fact": "",
+                "overqualified": False}
 
 def extract_hiring_manager(job: dict, client: genai.Client) -> str:
     """Best-effort: find a hiring manager or key contact name in the JD."""
@@ -511,29 +569,52 @@ Return only the name or — . No explanation."""
 
 def write_cover_letter(job: dict, score_data: dict, resume: str,
                        client: genai.Client) -> str:
-    prompt = f"""Write a professional 3-paragraph cover letter for Ashlee R. Thomas.
+    ats_keywords       = ", ".join(score_data.get("ats_keywords", []))
+    strongest          = score_data.get("strongest_credential", "")
+    company_fact       = score_data.get("company_fact", "")
+    overqualified      = score_data.get("overqualified", False)
 
-STRICT RULES:
-- Do NOT open with "I am excited to apply" or any generic opener
-- Para 1: Open with something SPECIFIC about {job['company']}'s sustainability program, \
-ESG commitments, or recent climate initiative. Show you know them.
-- Para 2: Connect Ashlee's Oxfam Scope 3 work and/or USAID background directly to \
-2-3 specific requirements from the JD
-- Para 3: Close noting her CC-P certification, multilingual capability \
-(English/Spanish/French), and a clear call to action
-- Tone: Direct, collegial, no filler phrases
-- Length: 250-300 words
+    overqualified_note = ""
+    if overqualified:
+        overqualified_note = (
+            "\n- This role is slightly below her seniority level. Frame this positively: "
+            "she is choosing this role deliberately for the mission/sector fit, not settling. "
+            "Do NOT mention the word 'overqualified'. Convey enthusiasm for the specific work, "
+            "not the title."
+        )
 
-CANDIDATE:
+    prompt = f"""Write a professional cover letter for Ashlee R. Thomas that will pass ATS \
+screening and compel a human recruiter to schedule an interview.
+
+CANDIDATE PROFILE:
 {resume}
 
 ROLE: {job['title']} at {job['company']}
 LOCATION: {job.get('location', '')}
-URL: {job['url']}
 JD: {job['description'][:4000] if job['description'] else 'No description available'}
-FIT NOTES: {score_data.get('why', '')}
 
-Write only the letter body. No subject line, no date, no address block."""
+INTELLIGENCE FROM JD ANALYSIS (use this — do not invent alternatives):
+- Strongest matching credential: {strongest if strongest else 'Her Oxfam Scope 3 + USAID background'}
+- ATS keywords to weave in naturally: {ats_keywords if ats_keywords else 'Scope 3, SBTi, supply chain decarbonization'}
+- Verified company fact from JD: {company_fact if company_fact else 'omit company-specific opener if no fact available'}
+- Why she fits: {score_data.get('why', '')}
+- Gap to acknowledge (briefly, if not none): {score_data.get('missing', 'none')}
+
+STRICT RULES:
+- PARA 1 (hook): If a verified company fact exists, open with it to show you know them.
+  If not, open directly with her strongest credential. NEVER invent company facts.
+- PARA 2 (proof): Mirror 3-4 ATS keywords from the list above naturally in sentences.
+  Connect her Oxfam Scope 3 work (85+ countries, SBTi translation, supplier engagement)
+  and/or USAID background (MDB partnerships, G7/G20/UN representation) to specific
+  requirements named in the JD. Be concrete — name programs, numbers, geographies.
+- PARA 3 (close): Lead with her CC-P certification. Add multilingual capability
+  (English/Spanish/French) if the role involves global work. One direct call to action.
+  If there's a gap, address it in one confident sentence — don't dwell.{overqualified_note}
+- Do NOT open with "I am excited to apply", "I am writing to express", or any generic opener
+- No filler phrases ("I believe", "I feel", "I think", "passionate about")
+- Tone: direct, senior, collegial
+- Length: 260-300 words
+- Write only the letter body — no subject line, no date, no address block"""
     try:
         r = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
         return r.text.strip()
@@ -910,9 +991,13 @@ def main():
     for job in jobs:
         result = score_job(job, resume, client)
         job.update({
-            "score":   result.get("score", 0),
-            "why":     result.get("why", ""),
-            "missing": result.get("missing", ""),
+            "score":               result.get("score", 0),
+            "why":                 result.get("why", ""),
+            "missing":             result.get("missing", ""),
+            "strongest_credential": result.get("strongest_credential", ""),
+            "ats_keywords":        result.get("ats_keywords", []),
+            "company_fact":        result.get("company_fact", ""),
+            "overqualified":       result.get("overqualified", False),
         })
         scored.append(job)
         time.sleep(0.3)
@@ -950,7 +1035,15 @@ def main():
     for i, job in enumerate(qualified):
         log.info("  %d/%d  %s @ %s", i + 1, len(qualified), job["title"], job["company"])
 
-        letter_text = write_cover_letter(job, {"why": job["why"]}, resume, client)
+        score_data = {
+            "why":                 job.get("why", ""),
+            "missing":             job.get("missing", ""),
+            "strongest_credential": job.get("strongest_credential", ""),
+            "ats_keywords":        job.get("ats_keywords", []),
+            "company_fact":        job.get("company_fact", ""),
+            "overqualified":       job.get("overqualified", False),
+        }
+        letter_text = write_cover_letter(job, score_data, resume, client)
         pdf_bytes   = render_pdf(job, letter_text, today)
 
         safe = re.sub(r"[^\w\s\-]", "", f"{job['company']} - {job['title']}")[:80].strip()

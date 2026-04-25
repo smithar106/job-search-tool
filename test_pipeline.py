@@ -33,7 +33,13 @@ SAMPLE_JOB = {
     "source":      "linkedin",
 }
 
-SAMPLE_SCORE = {"score": 8, "why": "Strong Scope 3 match.", "missing": "none"}
+SAMPLE_SCORE = {
+    "score": 8, "why": "Strong Scope 3 match.", "missing": "none",
+    "strongest_credential": "Led Scope 3 rollout across 85 countries at Oxfam.",
+    "ats_keywords": ["Scope 3", "SBTi", "supplier engagement"],
+    "company_fact": "Microsoft has committed to being carbon negative by 2030.",
+    "overqualified": False,
+}
 
 
 # ─── Deduplication ────────────────────────────────────────────────────────────
@@ -257,6 +263,30 @@ class TestScoring(unittest.TestCase):
         result = p.score_job(SAMPLE_JOB, "resume text", client)
         self.assertEqual(result["score"], 8)
         self.assertIn("why", result)
+
+    def test_returns_overqualified_false_for_best_fit(self):
+        client = MagicMock()
+        client.models.generate_content.return_value = MagicMock(
+            text=json.dumps(SAMPLE_SCORE))
+        result = p.score_job(SAMPLE_JOB, "resume text", client)
+        self.assertFalse(result.get("overqualified"))
+
+    def test_returns_overqualified_true_for_junior_role(self):
+        client = MagicMock()
+        overqualified_score = {**SAMPLE_SCORE, "score": 6, "overqualified": True}
+        client.models.generate_content.return_value = MagicMock(
+            text=json.dumps(overqualified_score))
+        result = p.score_job(SAMPLE_JOB, "resume text", client)
+        self.assertTrue(result.get("overqualified"))
+        self.assertEqual(result["score"], 6)
+
+    def test_overqualified_flag_defaults_false_on_missing_field(self):
+        client = MagicMock()
+        score_without_flag = {"score": 7, "why": "Good fit.", "missing": "none"}
+        client.models.generate_content.return_value = MagicMock(
+            text=json.dumps(score_without_flag))
+        result = p.score_job(SAMPLE_JOB, "resume text", client)
+        self.assertFalse(result.get("overqualified"))
 
     def test_handles_malformed_json(self):
         client = MagicMock()
